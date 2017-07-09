@@ -1,7 +1,7 @@
 Pyslvs_generate
 ===
 
-Origin repository: [https://github.com/kmollee/django-project-template](https://github.com/kmollee/django-project-template)
+Origin repository: [https://github.com/kmollee/algorithm](https://github.com/kmollee/algorithm)
 
 How to build?
 ===
@@ -12,20 +12,21 @@ Linux or Mac
 Install Cython and continue.
 
 ```bash
-$sudo pip3 install Cython
+$sudo pip3 install cython
 $make
 ```
 
 Windows
 ---
 
-You should install [Anaconda](https://www.continuum.io/downloads) instead of Python, it's contain Cython so you don't need to install it.
+Install Python 3 with Cython and continue.
 
 If you are using 64 bit OS with 64bit Python, unfortunately you **can not** use mingw64 to complete the compilation.
 
 Using Microsoft Visual Studio is the only option, you can get it from [here](https://www.visualstudio.com/downloads/). Get the Visual Studio Community and install Windows SDK.
 
 ```bash
+>pip install cython
 >make
 ```
 
