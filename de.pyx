@@ -8,9 +8,7 @@ from libc.time cimport time
 srand(time(NULL))
 
 cdef double randV():
-    randomNum = rand()*1.0 / RAND_MAX
-    if randomNum>=1: randomNum -= 0.1
-    return randomNum
+    return rand()/(RAND_MAX*1.0)
 
 cdef class Chromosome(object):
     """
@@ -50,7 +48,8 @@ cdef class DiffertialEvolution(object):
     cdef int timeS, timeE
     cdef object fitnessTime, fitnessParameter
     
-    def __cinit__(self, object Func, int strategy, int D, int NP, double F, double CR, object lower, object upper, int maxGen, int report):
+    def __cinit__(self, object Func, int strategy, int D, int NP, double F, double CR,
+            object lower, object upper, int maxGen, int report):
         # strategy 1~10, choice what strategy to generate new member in temporary
         self.strategy = strategy
         # dimesion of quesiton

@@ -12,7 +12,7 @@ from libc.time cimport time
 srand(time(NULL))
 
 cdef double randV():
-    return rand()*1.0 / RAND_MAX
+    return rand()/(RAND_MAX*1.0)
 
 cdef class Chromosome(object):
     cdef public int n
@@ -51,7 +51,8 @@ cdef class Firefly(object):
     cdef int timeS, timeE
     cdef object fitnessTime, fitnessParameter
     
-    def __init__(self, object f, int D, int n, double alpha, double betaMin, double beta0, double gamma, object lb, object ub, int maxGen, int report):
+    def __init__(self, object f, int D, int n, double alpha, double betaMin, double beta0, double gamma,
+            object lb, object ub, int maxGen, int report):
         # D, the dimension of question
         # and each firefly will random place position in this landscape
         self.D = D

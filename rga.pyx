@@ -8,9 +8,7 @@ from libc.stdlib cimport rand, RAND_MAX, srand
 srand(time(NULL))
 
 cdef double randV():
-    randomNum = rand()*1.0 / RAND_MAX
-    if randomNum>=1: randomNum -= 0.1
-    return randomNum
+    return rand()/(RAND_MAX*1.0)
 
 cdef class Chromosome(object):
     cdef public int n
@@ -43,18 +41,15 @@ cdef class Chromosome(object):
 cdef class Genetic(object):
     cdef int nParm, nPop, maxGen, gen, rpt
     cdef double pCross, pMute, pWin, bDelta, iseed, mask, seed
-    #cdef double[:] upper
-    #cdef double[:] lower
-    #cdef object func, chrom, newChrom, babyChrom
     cdef object func
     cdef np.ndarray chrom, newChrom, babyChrom
     cdef Chromosome chromElite, chromBest
-    #cdef double[:] maxLimit, minLimit
     cdef np.ndarray maxLimit, minLimit
     cdef int timeS, timeE
     cdef object fitnessTime, fitnessParameter
     
-    def __cinit__(self, object objFunc, int nParm, int nPop, double pCross, double pMute, double pWin, double bDelta, object upper, object lower, int maxGen, int report):
+    def __cinit__(self, object objFunc, int nParm, int nPop, double pCross, double pMute, double pWin, double bDelta,
+            object upper, object lower, int maxGen, int report):
         """
         init(function func)
         """
@@ -206,7 +201,6 @@ cdef class Genetic(object):
         self.initialPop()
         self.chrom[0].f = self.func(self.chrom[0].v)
         self.chromElite.assign(self.chrom[0])
-        
         self.gen = 0
         self.fitness()
         self.report()
