@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from libc.math cimport sqrt, exp, log10
 from cpython cimport bool
 from array import array

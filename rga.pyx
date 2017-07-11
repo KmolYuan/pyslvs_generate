@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from libc.math cimport fmod, pow
 from libc.time cimport time
 import numpy as np
