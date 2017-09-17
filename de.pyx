@@ -3,13 +3,15 @@ from cpython cimport bool
 import numpy as np
 cimport numpy as np
 from libc.stdlib cimport rand, RAND_MAX, srand
-from libc.time cimport time
+#from libc.time cimport time
+from time import time as pytime
+from cpython.exc cimport PyErr_CheckSignals
 
 # make true it is random everytime
-srand(time(NULL))
+srand(int(pytime()))
 
 cdef double randV():
-    return rand()/(RAND_MAX*1.0)
+    return rand()/(RAND_MAX*1.01)
 
 cdef class Chromosome(object):
     """
@@ -40,17 +42,16 @@ cdef class Chromosome(object):
         self.f = obj.f
 
 cdef class DiffertialEvolution(object):
-    cdef:
-        int strategy, D, NP, maxGen, rpt, gen, r1, r2, r3, r4, r5
-        double F, CR
-        np.ndarray lb, ub, pop
-        object f
-        Chromosome lastgenbest, currentbest
-    cdef int timeS, timeE
+    cdef int strategy, D, NP, maxGen, rpt, gen, r1, r2, r3, r4, r5
+    cdef double F, CR, timeS, timeE
+    cdef np.ndarray lb, ub, pop
+    cdef object f, progress_fun, interrupt_fun
+    cdef Chromosome lastgenbest, currentbest
     cdef object fitnessTime, fitnessParameter
     
-    def __cinit__(self, object Func, int strategy, int D, int NP, double F, double CR,
-            object lower, object upper, int maxGen, int report):
+    def __cinit__(self, object Func,
+            int strategy, int D, int NP, double F, double CR, object lower, object upper,
+            int maxGen, int report, object progress_fun=None, object interrupt_fun=None):
         # strategy 1~10, choice what strategy to generate new member in temporary
         self.strategy = strategy
         # dimesion of quesiton
@@ -68,10 +69,11 @@ cdef class DiffertialEvolution(object):
         self.lb = np.array(lower[:])
         # up bound
         self.ub = np.array(upper[:])
-        # maximum generation
+        # maxima generation, report: how many generation report status once
         self.maxGen = maxGen
-        # how many generation report once
         self.rpt = report
+        self.progress_fun = progress_fun
+        self.interrupt_fun = interrupt_fun
         # object function, or enviorment
         self.f = Func
         # check parameter is set properly
@@ -95,7 +97,7 @@ cdef class DiffertialEvolution(object):
         self.r5 = 0
         
         # setup benchmark
-        self.timeS = time(NULL)
+        self.timeS = pytime()
         self.timeE = 0
         self.fitnessTime = ''
         self.fitnessParameter = ''
@@ -110,9 +112,7 @@ cdef class DiffertialEvolution(object):
             raise Exception('NP shoud be integer and larger than 0')
         if self.CR < 0 or self.CR > 1:
             raise Exception('CR should be [0,1]')
-        if self.maxGen <= 0:
-            raise Exception('generation should larger than 0')
-        if self.rpt <= 0 or self.rpt > self.maxGen:
+        if self.rpt > self.maxGen:
             raise Exception('report should be larger than 0 and less than max genration')
         if self.strategy < 1 or self.strategy > 10:
             raise Exception('strategy should be [1,10]')
@@ -174,89 +174,71 @@ cdef class DiffertialEvolution(object):
         cdef Chromosome tmp
         cdef int n, L
         tmp = Chromosome(self.D)
-        if self.strategy == 1:
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
+        tmp.assign(self.pop[i])
+        n = int(randV() * self.D)
+        if self.strategy==1:
             L = 0
             while True:
                 tmp.v[n] = self.lastgenbest.v[n] + self.F*(self.pop[self.r2].v[n] - self.pop[self.r3].v[n])
                 n = (n + 1) % self.D
                 L += 1
-                if not ((randV() < self.CR) and (L < self.D)):
+                if not (randV() < self.CR and L < self.D):
                     break
-        elif self.strategy == 2:
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
+        elif self.strategy==2:
             L = 0
             while True:
                 tmp.v[n] = self.pop[self.r1].v[n] + self.F*(self.pop[self.r2].v[n] - self.pop[self.r3].v[n])
                 n = (n + 1) % self.D
                 L += 1
-                if not ((randV() < self.CR) and (L < self.D)):
+                if not (randV() < self.CR and L < self.D):
                     break
-        elif (self.strategy == 3):
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
+        elif self.strategy==3:
             L = 0
             while True:
                 tmp.v[n] = tmp.v[n] + self.F*(self.lastgenbest.v[n] - tmp.v[n]) + self.F*(self.pop[self.r1].v[n] - self.pop[self.r2].v[n])
                 n = (n + 1) % self.D
                 L += 1
-                if not ((randV() < self.CR) and (L < self.D)):
+                if not (randV() < self.CR and L < self.D):
                     break
-        elif (self.strategy == 4):
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
+        elif self.strategy==4:
             L = 0
             while True:
                 tmp.v[n] = self.lastgenbest.v[n] + (self.pop[self.r1].v[n] + self.pop[self.r2].v[n] - self.pop[self.r3].v[n] - self.pop[self.r4].v[n]) * self.F
                 n = (n + 1) % self.D
                 L += 1
-                if not ((randV() < self.CR) and (L < self.D)):
+                if not (randV() < self.CR and L < self.D):
                     break
-        elif (self.strategy == 5):
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
+        elif self.strategy==5:
             L = 0
             while True:
                 tmp.v[n] = self.pop[self.r5].v[n] + (self.pop[self.r1].v[n] + self.pop[self.r2].v[n] - self.pop[self.r3].v[n] - self.pop[self.r4].v[n]) * self.F
                 n = (n + 1) % self.D
                 L += 1
-                if not ((randV() < self.CR) and (L < self.D)):
+                if not (randV() < self.CR and L < self.D):
                     break
-        elif (self.strategy == 6):
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
+        elif self.strategy==6:
             for L in range(self.D):
-                if ((randV() < self.CR) or L == (self.D - 1)):
+                if (randV() < self.CR or L == self.D-1):
                     tmp.v[n] = self.lastgenbest.v[n] + self.F*(self.pop[self.r2].v[n] - self.pop[self.r3].v[n])
                 n = (n + 1) % self.D
-        elif (self.strategy == 7):
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
+        elif self.strategy==7:
             for L in range(self.D):
-                if ((randV() < self.CR) or L == (self.D - 1)):
+                if ((randV() < self.CR) or L == self.D-1):
                     tmp.v[n] = self.pop[self.r1].v[n] + self.F*(self.pop[self.r2].v[n] - self.pop[self.r3].v[n])
                 n = (n + 1) % self.D
-        elif (self.strategy == 8):
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
+        elif self.strategy==8:
             for L in range(self.D):
-                if ((randV() < self.CR) or L == (self.D - 1)):
+                if (randV() < self.CR or L == self.D-1):
                     tmp.v[n] = tmp.v[n] + self.F*(self.lastgenbest.v[n] - tmp.v[n]) + self.F*(self.pop[self.r1].v[n] - self.pop[self.r2].v[n])
                 n = (n + 1) % self.D
-        elif (self.strategy == 9):
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
+        elif self.strategy==9:
             for L in range(self.D):
-                if ((randV() < self.CR) or L == (self.D - 1)):
+                if (randV() < self.CR or L == self.D-1):
                     tmp.v[n] = self.lastgenbest.v[n] + (self.pop[self.r1].v[n] + self.pop[self.r2].v[n] - self.pop[self.r3].v[n] - self.pop[self.r4].v[n]) * self.F
                 n = (n + 1) % self.D
         else:
-            tmp.assign(self.pop[i])
-            n = int(randV() * self.D)
             for L in range(self.D):
-                if ((randV() < self.CR) or L == (self.D - 1)):
+                if (randV() < self.CR or L == self.D-1):
                     tmp.v[n] = self.pop[self.r5].v[n] + (self.pop[self.r1].v[n] + self.pop[self.r2].v[n] - self.pop[self.r3].v[n] - self.pop[self.r4].v[n]) * self.F
                 n = (n + 1) % self.D
         return tmp
@@ -265,8 +247,8 @@ cdef class DiffertialEvolution(object):
         """
         report current generation status
         """
-        self.timeE = time(NULL)
-        self.fitnessTime += '%d,%.3f,%d;'%(self.gen, self.lastgenbest.f, self.timeE - self.timeS)
+        self.timeE = pytime()
+        self.fitnessTime += '%d,%.4f,%.2f;'%(self.gen, self.lastgenbest.f, self.timeE - self.timeS)
     
     cdef bool overbound(self, Chromosome member):
         """
@@ -280,6 +262,40 @@ cdef class DiffertialEvolution(object):
     
     cdef void getParamValue(self):
         self.fitnessParameter = ','.join(['%.4f'%(v) for v in self.lastgenbest.v])
+    
+    cdef void generation_process(self):
+        for i in range(self.NP):
+            # generate new vector
+            self.generateRandomVector(i)
+            # use the vector recombine the member to temporary
+            tmp = self.recombination(i)
+            # check the one is out of bound?
+            if self.overbound(tmp):
+                # if it is, then abandon it
+                continue
+            # is not out of bound, that mean it's quilify of enviorment
+            # then evalute the one
+            tmp.f = self.evalute(tmp)
+            # if temporary one is better than origin(fitness value is smaller)
+            if tmp.f <= self.pop[i].f:
+                # copy the temporary one to origin member
+                self.pop[i].assign(tmp)
+                # check the temporary one is better than the currentbest
+                if tmp.f < self.currentbest.f:
+                    # copy the temporary one to currentbest
+                    self.currentbest.assign(tmp)
+        # copy the currentbest to lastgenbest
+        self.lastgenbest.assign(self.currentbest)
+        # if report generation is set, report
+        if self.rpt != 0:
+            if self.gen % self.rpt == 0:
+                self.report()
+        else:
+            if self.gen % 10 == 0:
+                self.report()
+        #progress
+        if self.progress_fun is not None:
+            self.progress_fun(self.gen, '%.4f'%self.lastgenbest.f)
     
     cpdef run(self):
         """
@@ -302,33 +318,23 @@ cdef class DiffertialEvolution(object):
         self.report()
         # end initial step
         # the evolution journey is beggin...
-        for self.gen in range(1, self.maxGen + 1):
-            for i in range(self.NP):
-                # generate new vector
-                self.generateRandomVector(i)
-                # use the vector recombine the member to temporary
-                tmp = self.recombination(i)
-                # check the one is out of bound?
-                if self.overbound(tmp):
-                    # if it is, then abandon it
-                    continue
-                # is not out of bound, that mean it's quilify of enviorment
-                # then evalute the one
-                tmp.f = self.evalute(tmp)
-                # if temporary one is better than origin(fitness value is smaller)
-                if tmp.f <= self.pop[i].f:
-                    # copy the temporary one to origin member
-                    self.pop[i].assign(tmp)
-                    # check the temporary one is better than the currentbest
-                    if tmp.f < self.currentbest.f:
-                        # copy the temporary one to currentbest
-                        self.currentbest.assign(tmp)
-            # copy the currentbest to lastgenbest
-            self.lastgenbest.assign(self.currentbest)
-            # if report generation is set, report
-            if self.rpt != 0:
-                if self.gen % self.rpt == 0:
-                    self.report()
+        if self.maxGen>0:
+            for self.gen in range(1, self.maxGen+1):
+                self.generation_process()
+                #interrupt
+                if self.interrupt_fun is not None:
+                    if self.interrupt_fun():
+                        break
+                PyErr_CheckSignals()
+        else:
+            while True:
+                self.generation_process()
+                self.gen += 1
+                #interrupt
+                if self.interrupt_fun is not None:
+                    if self.interrupt_fun():
+                        break
+                PyErr_CheckSignals()
         # the evolution journey is done, report the final status
         self.report()
         self.getParamValue()

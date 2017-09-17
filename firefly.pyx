@@ -2,18 +2,18 @@
 from libc.math cimport sqrt, exp, log10
 from cpython cimport bool
 from array import array
-
 import numpy as np
 cimport numpy as np
-
 from libc.stdlib cimport rand, RAND_MAX, srand
-from libc.time cimport time
+#from libc.time cimport time
+from time import time as pytime
+from cpython.exc cimport PyErr_CheckSignals
 
 # make true it is random everytime
-srand(time(NULL))
+srand(int(pytime()))
 
 cdef double randV():
-    return rand()/(RAND_MAX*1.0)
+    return rand()/(RAND_MAX*1.01)
 
 cdef class Chromosome(object):
     cdef public int n
@@ -41,19 +41,16 @@ cdef class Chromosome(object):
 
 cdef class Firefly(object):
     cdef int D, n, maxGen, rp, gen
-    cdef double alpha, alpha0, betaMin, beta0, gamma
-    cdef object f
-    #cdef double[:] lb, ub
+    cdef double alpha, alpha0, betaMin, beta0, gamma, timeS, timeE
+    cdef object f, progress_fun, interrupt_fun
     cdef np.ndarray lb, ub
-    #cdef Chromosome[:] fireflys
-    #cdef object fireflys
     cdef np.ndarray fireflys
     cdef Chromosome genbest, bestFirefly
-    cdef int timeS, timeE
     cdef object fitnessTime, fitnessParameter
     
-    def __init__(self, object f, int D, int n, double alpha, double betaMin, double beta0, double gamma,
-            object lb, object ub, int maxGen, int report):
+    def __init__(self, object f, int D, int n,
+            double alpha, double betaMin, double beta0, double gamma, object lb, object ub,
+            int maxGen, int report, object progress_fun=None, object interrupt_fun=None):
         # D, the dimension of question
         # and each firefly will random place position in this landscape
         self.D = D
@@ -63,9 +60,9 @@ cdef class Firefly(object):
         self.alpha = alpha
         # alpha0, use to calculate_new_alpha
         self.alpha0 = alpha
-        # betamin, the minimal attration, must not less than this
+        # betamin, the minimal attraction, must not less than this
         self.betaMin = betaMin
-        # beta0, the attration of two firefly in 0 distance
+        # beta0, the attraction of two firefly in 0 distance
         self.beta0 = beta0
         # gamma
         self.gamma = gamma
@@ -79,10 +76,11 @@ cdef class Firefly(object):
             self.fireflys[i] = Chromosome(self.D)
         # object function
         self.f = f
-        # maxima generation
+        # maxima generation, report: how many generation report status once
         self.maxGen = maxGen
-        # report, how many generation report status once
         self.rp = report
+        self.progress_fun = progress_fun
+        self.interrupt_fun = interrupt_fun
         # generation of current
         self.gen = 0
         # best firefly of geneation
@@ -91,7 +89,7 @@ cdef class Firefly(object):
         self.bestFirefly = Chromosome(self.D)
         
         # setup benchmark
-        self.timeS = time(NULL)
+        self.timeS = pytime()
         self.timeE = 0
         self.fitnessTime = ''
         self.fitnessParameter = ''
@@ -146,8 +144,8 @@ cdef class Firefly(object):
         return min(self.fireflys, key=lambda chrom:chrom.f)
     
     cdef void report(self):
-        self.timeE = time(NULL)
-        self.fitnessTime += '%d,%.3f,%d;'%(self.gen, self.bestFirefly.f, self.timeE - self.timeS)
+        self.timeE = pytime()
+        self.fitnessTime += '%d,%.4f,%.2f;'%(self.gen, self.bestFirefly.f, self.timeE - self.timeS)
     
     cdef void calculate_new_alpha(self):
         self.alpha = self.alpha0 * log10(self.genbest.f + 1)
@@ -155,25 +153,49 @@ cdef class Firefly(object):
     cdef void getParamValue(self):
         self.fitnessParameter = ','.join(['%.4f'%(v) for v in self.bestFirefly.v])
     
+    cdef void generation_process(self):
+        self.movefireflies()
+        self.evaluate()
+        # adjust alpha, depend on fitness value
+        # if fitness value is larger, then alpha should larger
+        # if fitness value is small, then alpha should smaller
+        self.genbest.assign(self.findFirefly())
+        if self.bestFirefly.f > self.genbest.f:
+            self.bestFirefly.assign(self.genbest)
+        # self.bestFirefly.assign(gen_best)
+        self.calculate_new_alpha()
+        if self.rp != 0:
+            if self.gen % self.rp == 0:
+                self.report()
+        else:
+            if self.gen % 10 == 0:
+                self.report()
+        #progress
+        if self.progress_fun is not None:
+            self.progress_fun(self.gen, '%.4f'%self.bestFirefly.f)
+    
     cpdef run(self):
         self.init()
         self.evaluate()
         self.bestFirefly.assign(self.fireflys[0])
         self.report()
-        for self.gen in range(1, self.maxGen + 1):
-            self.movefireflies()
-            self.evaluate()
-            # adjust alpha, depend on fitness value
-            # if fitness value is larger, then alpha should larger
-            # if fitness value is small, then alpha should smaller
-            self.genbest.assign(self.findFirefly())
-            if self.bestFirefly.f > self.genbest.f:
-                self.bestFirefly.assign(self.genbest)
-            # self.bestFirefly.assign(gen_best)
-            self.calculate_new_alpha()
-            if self.rp != 0:
-                if self.gen % self.rp == 0:
-                    self.report()
+        if self.maxGen>0:
+            for self.gen in range(1, self.maxGen+1):
+                self.generation_process()
+                #interrupt
+                if self.interrupt_fun is not None:
+                    if self.interrupt_fun():
+                        break
+                PyErr_CheckSignals()
+        else:
+            while True:
+                self.generation_process()
+                self.gen += 1
+                #interrupt
+                if self.interrupt_fun is not None:
+                    if self.interrupt_fun():
+                        break
+                PyErr_CheckSignals()
         self.report()
         self.getParamValue()
         return self.fitnessTime, self.fitnessParameter

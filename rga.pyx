@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
 from libc.math cimport fmod, pow
-from libc.time cimport time
 import numpy as np
 cimport numpy as np
+#from libc.time cimport time
+from time import time as pytime
+from cpython.exc cimport PyErr_CheckSignals
+from cpython cimport bool
 
 #https://stackoverflow.com/questions/25974975/cython-c-array-initialization
 from libc.stdlib cimport rand, RAND_MAX, srand
-srand(time(NULL))
+srand(int(pytime()))
 
 cdef double randV():
-    return rand()/(RAND_MAX*1.0)
+    return rand()/(RAND_MAX*1.01)
 
 cdef class Chromosome(object):
     cdef public int n
@@ -41,16 +44,16 @@ cdef class Chromosome(object):
 
 cdef class Genetic(object):
     cdef int nParm, nPop, maxGen, gen, rpt
-    cdef double pCross, pMute, pWin, bDelta, iseed, mask, seed
-    cdef object func
+    cdef double pCross, pMute, pWin, bDelta, iseed, mask, seed, timeS, timeE
+    cdef object func, progress_fun, interrupt_fun
     cdef np.ndarray chrom, newChrom, babyChrom
     cdef Chromosome chromElite, chromBest
     cdef np.ndarray maxLimit, minLimit
-    cdef int timeS, timeE
     cdef object fitnessTime, fitnessParameter
     
-    def __cinit__(self, object objFunc, int nParm, int nPop, double pCross, double pMute, double pWin, double bDelta,
-            object upper, object lower, int maxGen, int report):
+    def __cinit__(self, object objFunc, int nParm, int nPop,
+            double pCross, double pMute, double pWin, double bDelta, object upper, object lower,
+            int maxGen, int report, object progress_fun=None, object interrupt_fun=None):
         """
         init(function func)
         """
@@ -66,6 +69,8 @@ cdef class Genetic(object):
         self.bDelta = bDelta
         self.maxGen = maxGen
         self.rpt = report
+        self.progress_fun = progress_fun
+        self.interrupt_fun = interrupt_fun
         
         self.chrom = np.ndarray((nPop,),dtype=np.object)
         for i in range(nPop):
@@ -84,11 +89,10 @@ cdef class Genetic(object):
         # up bound
         self.maxLimit = np.array(upper[:])
         # maxgen and gen
-        #self.maxGen = 0
         self.gen = 0
         
         # setup benchmark
-        self.timeS = time(NULL)
+        self.timeS = pytime()
         self.timeE = 0
         self.fitnessTime = ''
         self.fitnessParameter = ''
@@ -167,8 +171,8 @@ cdef class Genetic(object):
                     self.chrom[i].v[s] -= self.delta(self.chrom[i].v[s]-self.minLimit[s])
     
     cdef void report(self)except *:
-        self.timeE = time(NULL)
-        self.fitnessTime += '%d,%.3f,%d;'%(self.gen, self.chromElite.f, self.timeE - self.timeS)
+        self.timeE = pytime()
+        self.fitnessTime += '%d,%.4f,%.2f;'%(self.gen, self.chromElite.f, self.timeE - self.timeS)
     
     cdef void select(self)except *:
         """
@@ -192,6 +196,21 @@ cdef class Genetic(object):
     cdef void getParamValue(self):
         self.fitnessParameter = ','.join(['%.4f'%(v) for v in self.chromElite.v])
     
+    cdef void generation_process(self):
+        self.select()
+        self.crossOver()
+        self.mutate()
+        self.fitness()
+        if self.rpt != 0:
+            if self.gen % self.rpt == 0:
+                self.report()
+        else:
+            if self.gen % 10 == 0:
+                self.report()
+        #progress
+        if self.progress_fun is not None:
+            self.progress_fun(self.gen, '%.4f'%self.chromElite.f)
+    
     cpdef run(self):
         """
         // **** Init and run GA for maxGen times
@@ -205,14 +224,23 @@ cdef class Genetic(object):
         self.gen = 0
         self.fitness()
         self.report()
-        for self.gen in range(1, self.maxGen + 1):
-            self.select()
-            self.crossOver()
-            self.mutate()
-            self.fitness()
-            if self.rpt != 0:
-                if self.gen % self.rpt == 0:
-                    self.report()
+        if self.maxGen>0:
+            for self.gen in range(1, self.maxGen+1):
+                self.generation_process()
+                #interrupt
+                if self.interrupt_fun is not None:
+                    if self.interrupt_fun():
+                        break
+                PyErr_CheckSignals()
+        else:
+            while True:
+                self.generation_process()
+                self.gen += 1
+                #interrupt
+                if self.interrupt_fun is not None:
+                    if self.interrupt_fun():
+                        break
+                PyErr_CheckSignals()
         self.report()
         self.getParamValue()
         return self.fitnessTime, self.fitnessParameter
